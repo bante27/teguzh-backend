@@ -6,7 +6,6 @@ const agent = new https.Agent({ rejectUnauthorized: false });
 
 const getPrivateKey = () => {
   let key = process.env.TELEBIRR_PRIVATE_KEY || '';
-  // Ensure literal \n strings are replaced with actual newline characters
   key = key.replace(/\\n/g, '\n');
   if (!key.includes('BEGIN PRIVATE KEY')) {
     key = `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
@@ -35,26 +34,22 @@ const signPayload = (payload) => {
 };
 
 const fetchFabricToken = async () => {
-  try {
-    const url = 'https://app.telebirr.com/ammapi/payment/service-open/v1/start/fabric-token';
-    const response = await axios.post(url, {
-      appId: process.env.TELEBIRR_APP_ID
-    }, {
-      headers: {
-        'X-APP-KEY': process.env.TELEBIRR_APP_KEY,
-        'Content-Type': 'application/json'
-      },
-      httpsAgent: agent
-    });
+  const url = 'https://app.telebirr.com/ammapi/payment/service-open/v1/start/fabric-token';
+  const response = await axios.post(url, {
+    appId: process.env.TELEBIRR_APP_ID
+  }, {
+    headers: {
+      'X-APP-KEY': process.env.TELEBIRR_APP_KEY,
+      'Content-Type': 'application/json'
+    },
+    httpsAgent: agent,
+    timeout: 5000
+  });
 
-    if (response.data && response.data.code === 0 && response.data.data) {
-      return response.data.data.token;
-    }
-    throw new Error(response.data?.msg || 'Failed to fetch Fabric Token');
-  } catch (error) {
-    console.error('Telebirr fetchFabricToken Error:', error.response?.data || error.message);
-    throw error;
+  if (response.data && response.data.code === 0 && response.data.data) {
+    return response.data.data.token;
   }
+  throw new Error(response.data?.msg || 'Failed to fetch Fabric Token');
 };
 
 const createTelebirrOrder = async ({ outTradeNo, subject, totalAmount, returnUrl }) => {
@@ -95,11 +90,11 @@ const createTelebirrOrder = async ({ outTradeNo, subject, totalAmount, returnUrl
         'Authorization': token,
         'Content-Type': 'application/json'
       },
-      httpsAgent: agent
+      httpsAgent: agent,
+      timeout: 5000
     });
 
     if (response.data && response.data.code === 0 && response.data.data) {
-      // Return real Telebirr checkout payment URL (toPayUrl)
       return {
         success: true,
         paymentUrl: response.data.data.toPayUrl || response.data.data.checkoutUrl
@@ -108,8 +103,12 @@ const createTelebirrOrder = async ({ outTradeNo, subject, totalAmount, returnUrl
 
     throw new Error(response.data?.msg || 'Telebirr checkout initiation failed');
   } catch (error) {
-    console.error('Telebirr createTelebirrOrder Error:', error.response?.data || error.message);
-    throw error;
+    console.warn('⚠️ Telebirr live handshake dropped (ECONNRESET/Timeout). Falling back to local simulation page:', error.message);
+    // Graceful Fallback as requested
+    return {
+      success: false,
+      paymentUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/api/passenger/payment-simulate-page?token=${outTradeNo}`
+    };
   }
 };
 
