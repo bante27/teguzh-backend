@@ -3,18 +3,23 @@ const Bus = require('../models/Bus');
 const dynamicFare = require('../services/dynamicFare');
 const qrGenerator = require('../services/qrGenerator');
 const telebirrService = require('../services/telebirrService');
+const mongoose = require('mongoose');
 
 exports.bookTicket = async (req, res, next) => {
   try {
     const { startPoint, dropOffPoint, passengerPhone, busId } = req.body;
 
     if (!startPoint || !dropOffPoint || !passengerPhone || !busId) {
-      return res.status(400).json({ success: false, message: 'Missing required booking fields' });
+      return res.status(400).json({ success: false, message: 'Missing required booking fields (startPoint, dropOffPoint, passengerPhone, busId)' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(busId)) {
+      return res.status(400).json({ success: false, message: 'Invalid busId format. Must be a valid MongoDB ObjectId from bus creation.' });
     }
 
     const bus = await Bus.findById(busId);
     if (!bus) {
-      return res.status(404).json({ success: false, message: 'Bus not found' });
+      return res.status(404).json({ success: false, message: 'Bus not found in database' });
     }
 
     const fareData = await dynamicFare.calculateFare(startPoint, dropOffPoint);
