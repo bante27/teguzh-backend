@@ -1,68 +1,122 @@
 const crypto = require('crypto');
+const axios = require('axios');
 const https = require('https');
-const telebirrConfig = require('../config/telebirr');
 
 const agent = new https.Agent({ rejectUnauthorized: false });
 
-const encryptAES = (data, key) => {
-  const cipher = crypto.createCipheriv('aes-128-cbc', Buffer.from(key, 'utf8'), Buffer.alloc(16, 0));
-  let encrypted = cipher.update(data, 'utf8', 'hex');
+const getPrivateKey = () => {
+  let key = process.env.TELEBIRR_PRIVATE_KEY || '';
+  // Ensure literal \n strings are replaced with actual newline characters
+  key = key.replace(/\\n/g, '\n');
+  if (!key.includes('BEGIN PRIVATE KEY')) {
+    key = `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
+  }
+  return key;
+};
+
+const encryptAES = (data, keyStr) => {
+  const key = Buffer.from(keyStr || process.env.TELEBIRR_APP_KEY || '', 'utf8');
+  const cipher = crypto.createCipheriv('aes-128-cbc', key, Buffer.alloc(16, 0));
+  let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
   encrypted += cipher.final('hex');
   return encrypted;
 };
 
-const signPayload = (payload, privateKey) => {
+const signPayload = (payload) => {
   const sortedKeys = Object.keys(payload).sort();
-  const sortedPayload = sortedKeys.map(key => `${key}=${payload[key]}`).join('&');
+  const sortedString = sortedKeys
+    .map(key => `${key}=${payload[key]}`)
+    .join('&');
+
   const signer = crypto.createSign('SHA256');
-  signer.update(sortedPayload);
-  return signer.sign(privateKey, 'hex');
+  signer.update(sortedString);
+  const signature = signer.sign(getPrivateKey(), 'base64');
+  return signature;
 };
 
-const initiatePayment = async (payload) => {
+const fetchFabricToken = async () => {
   try {
-    const url = 'https://app.telebirr.com/api/v1/payment/initiate';
-    // If live handshake fails or is in dev mode, throw error to trigger graceful fallback
-    const reqData = JSON.stringify(payload);
-    
-    // Simulating outbound request or real attempt with agent
-    return new Promise((resolve, reject) => {
-      // For resilience in local environment, if TELEBIRR_SIMULATE is true or request fails:
-      if (process.env.NODE_ENV !== 'production') {
-        return resolve({ success: false, fallback: '/api/passenger/payment-simulate-page' });
-      }
-
-      const req = https.request(url, {
-        method: 'POST',
-        agent,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(reqData)
-        }
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data);
-            resolve({ success: true, url: json.paymentUrl || 'https://app.telebirr.com/pay' });
-          } catch (e) {
-            resolve({ success: false, fallback: '/api/passenger/payment-simulate-page' });
-          }
-        });
-      });
-
-      req.on('error', (err) => {
-        resolve({ success: false, fallback: '/api/passenger/payment-simulate-page' });
-      });
-
-      req.write(reqData);
-      req.end();
+    const url = 'https://app.telebirr.com/ammapi/payment/service-open/v1/start/fabric-token';
+    const response = await axios.post(url, {
+      appId: process.env.TELEBIRR_APP_ID
+    }, {
+      headers: {
+        'X-APP-KEY': process.env.TELEBIRR_APP_KEY,
+        'Content-Type': 'application/json'
+      },
+      httpsAgent: agent
     });
+
+    if (response.data && response.data.code === 0 && response.data.data) {
+      return response.data.data.token;
+    }
+    throw new Error(response.data?.msg || 'Failed to fetch Fabric Token');
   } catch (error) {
-    console.error('Telebirr error, falling back:', error.message);
-    return { success: false, fallback: '/api/passenger/payment-simulate-page' };
+    console.error('Telebirr fetchFabricToken Error:', error.response?.data || error.message);
+    throw error;
   }
 };
 
-module.exports = { encryptAES, signPayload, initiatePayment, agent };
+const createTelebirrOrder = async ({ outTradeNo, subject, totalAmount, returnUrl }) => {
+  try {
+    const token = await fetchFabricToken();
+
+    const businessData = {
+      appId: process.env.TELEBIRR_APP_ID,
+      merchentId: process.env.TELEBIRR_MERCHANT_ID,
+      merchentOrderId: outTradeNo,
+      title: subject,
+      totalAmount: totalAmount.toString(),
+      transCurrency: 'ETB',
+      notifyUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/api/passenger/telebirr-webhook`,
+      redirectUrl: returnUrl || `${process.env.FRONTEND_URL || 'http://localhost:5000'}/api/passenger/success`,
+      timestamp: Date.now().toString(),
+      nonceStr: crypto.randomBytes(16).toString('hex')
+    };
+
+    const bizContent = encryptAES(businessData, process.env.TELEBIRR_APP_KEY);
+    
+    const requestPayload = {
+      appId: process.env.TELEBIRR_APP_ID,
+      bizContent: bizContent,
+      charset: 'UTF-8',
+      version: '1.0',
+      signType: 'SHA256withRSA',
+      timestamp: businessData.timestamp,
+      nonceStr: businessData.nonceStr
+    };
+
+    requestPayload.sign = signPayload(requestPayload);
+
+    const checkoutUrl = 'https://app.telebirr.com/ammapi/payment/service-open/v1/h5/checkout';
+    const response = await axios.post(checkoutUrl, requestPayload, {
+      headers: {
+        'X-APP-KEY': process.env.TELEBIRR_APP_KEY,
+        'Authorization': token,
+        'Content-Type': 'application/json'
+      },
+      httpsAgent: agent
+    });
+
+    if (response.data && response.data.code === 0 && response.data.data) {
+      // Return real Telebirr checkout payment URL (toPayUrl)
+      return {
+        success: true,
+        paymentUrl: response.data.data.toPayUrl || response.data.data.checkoutUrl
+      };
+    }
+
+    throw new Error(response.data?.msg || 'Telebirr checkout initiation failed');
+  } catch (error) {
+    console.error('Telebirr createTelebirrOrder Error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+module.exports = {
+  encryptAES,
+  signPayload,
+  fetchFabricToken,
+  createTelebirrOrder,
+  agent
+};
