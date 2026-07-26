@@ -3,6 +3,7 @@ const Conductor = require('../models/Conductor');
 const Bus = require('../models/Bus');
 const Route = require('../models/Route');
 const Ticket = require('../models/Ticket');
+const mongoose = require('mongoose');
 
 exports.dashboard = async (req, res, next) => {
   try {
@@ -72,7 +73,13 @@ exports.createConductor = async (req, res, next) => {
     if (!name || !phone || !password) {
       return res.status(400).json({ success: false, message: 'Missing name, phone, or password' });
     }
-    const conductor = new Conductor({ name, phone, password, busId });
+
+    let validBusId = undefined;
+    if (busId && mongoose.Types.ObjectId.isValid(busId)) {
+      validBusId = busId;
+    }
+
+    const conductor = new Conductor({ name, phone, password, busId: validBusId });
     await conductor.save();
     return res.status(201).json({ success: true, message: 'Conductor created successfully', conductor });
   } catch (error) {
