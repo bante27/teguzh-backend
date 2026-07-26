@@ -2,7 +2,14 @@ const helmet = require('helmet');
 
 const securityMiddleware = [
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+      },
+    },
   }),
   (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
