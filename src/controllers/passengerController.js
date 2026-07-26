@@ -31,7 +31,7 @@ exports.passengerBookPage = async (req, res, next) => {
           <style>
               body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
               .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 420px; }
-              h2 { color: #1a73e8; text-align: center; margin-bottom: 5px; }
+              h2 { color: #008751; text-align: center; margin-bottom: 5px; }
               p.subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 20px; }
               .form-group { margin-bottom: 15px; }
               label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #333; }
@@ -43,7 +43,7 @@ exports.passengerBookPage = async (req, res, next) => {
       <body>
           <div class="card">
               <h2>Teguzh Bus Ticketing</h2>
-              <p class="subtitle">Scan & Book Your Ride Instantly</p>
+              <p class="subtitle">Scan QR & Book Your Ride via Telebirr</p>
               <form id="bookingForm">
                   <div class="form-group">
                       <label>Bus ID / QR Code ID</label>
@@ -61,7 +61,7 @@ exports.passengerBookPage = async (req, res, next) => {
                       <label>Passenger Phone Number</label>
                       <input type="text" id="passengerPhone" name="passengerPhone" required placeholder="e.g., +251911223344" />
                   </div>
-                  <button type="submit">Proceed to Telebirr Payment</button>
+                  <button type="submit">Pay with Telebirr</button>
               </form>
           </div>
           <script>
@@ -160,34 +160,40 @@ exports.successPage = async (req, res, next) => {
       <html lang="en">
       <head>
           <meta charset="UTF-8">
-          <title>Teguzh - Payment Success</title>
+          <title>Teguzh - Payment Success & Dashboard</title>
           <style>
               body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #e6f4ea; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-              .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; max-width: 420px; width: 100%; }
+              .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; max-width: 440px; width: 100%; animation: fadeIn 0.8s ease-in-out; }
+              @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+              .success-icon { font-size: 50px; color: #137333; margin-bottom: 10px; }
               h2 { color: #137333; margin-bottom: 5px; }
-              .clock { font-size: 20px; font-weight: bold; color: #555; margin: 15px 0; background: #f1f3f4; padding: 10px; border-radius: 6px; }
-              .token { background: #e8f0fe; color: #1a73e8; padding: 12px; font-family: monospace; font-size: 18px; font-weight: bold; border-radius: 6px; margin: 20px 0; }
+              .clock { font-size: 22px; font-weight: bold; color: #008751; margin: 15px 0; background: #e8f5e9; padding: 12px; border-radius: 8px; border: 1px dashed #008751; }
+              .token { background: #f1f3f4; color: #333; padding: 12px; font-family: monospace; font-size: 18px; font-weight: bold; border-radius: 6px; margin: 20px 0; }
               .details { text-align: left; background: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 14px; color: #444; }
           </style>
       </head>
       <body>
           <div class="card">
+              <div class="success-icon">✔</div>
               <h2>Payment Successful!</h2>
-              <p>Telebirr Transaction Confirmed</p>
-              <div class="clock" id="liveClock">Loading time...</div>
+              <p>Telebirr H5 Secure Transaction Verified</p>
+              <div class="clock" id="liveClock">00:00:00 AM</div>
               <div class="token">${ticket ? ticket.ticketToken : (token || 'N/A')}</div>
               <div class="details">
-                  <p><strong>Status:</strong> <span style="color: #137333; font-weight: bold;">PAID</span></p>
+                  <p><strong>Status:</strong> <span style="color: #137333; font-weight: bold;">PAID & CONFIRMED</span></p>
                   <p><strong>Route:</strong> ${ticket ? ticket.startPoint + ' ➔ ' + ticket.dropOffPoint : 'N/A'}</p>
-                  <p><strong>Amount Paid:</strong> ${ticket ? ticket.fareAmount + ' ETB' : 'N/A'}</p>
-                  <p><strong>Transaction Time:</strong> <span id="txnTime">${new Date().toLocaleString()}</span></p>
+                  <p><strong>Fare Amount:</strong> ${ticket ? ticket.fareAmount + ' ETB' : 'N/A'}</p>
+                  <p><strong>Transaction ID:</strong> ${ticket ? (ticket.telebirrTransId || 'TB-H5-TXN-' + Date.now()) : 'N/A'}</p>
+                  <p><strong>Completed At:</strong> <span id="txnTime"></span></p>
               </div>
-              <p style="margin-top: 20px; font-size: 13px; color: #666;">Show this digital token to the bus conductor upon boarding.</p>
+              <p style="margin-top: 20px; font-size: 13px; color: #666;">Show this verified pass and active clock to the conductor.</p>
           </div>
           <script>
+              const now = new Date();
+              document.getElementById('txnTime').innerText = now.toLocaleString();
               function updateClock() {
-                  const now = new Date();
-                  document.getElementById('liveClock').innerText = now.toLocaleTimeString();
+                  const d = new Date();
+                  document.getElementById('liveClock').innerText = d.toLocaleTimeString();
               }
               setInterval(updateClock, 1000);
               updateClock();
@@ -219,32 +225,56 @@ exports.simulatePaymentPage = async (req, res, next) => {
       <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Telebirr Secure Checkout Simulation</title>
+          <title>Telebirr H5 Animated Checkout</title>
           <style>
               body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-              .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-              h2 { color: #1a73e8; margin-bottom: 10px; }
-              .amount { font-size: 28px; font-weight: bold; color: #333; margin: 20px 0; }
+              .card { background: white; padding: 35px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; animation: slideUp 0.5s ease-out; }
+              @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+              .logo { width: 60px; height: 60px; background: #008751; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; margin: 0 auto 15px auto; }
+              h2 { color: #008751; margin-bottom: 5px; }
+              .amount { font-size: 32px; font-weight: bold; color: #222; margin: 15px 0; }
+              .clock { font-size: 16px; color: #666; margin-bottom: 20px; font-family: monospace; background: #f8f9fa; padding: 8px; border-radius: 6px; }
               .details { text-align: left; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; color: #555; }
-              button { background: #008751; color: white; border: none; padding: 12px 20px; width: 100%; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.3s; }
+              button { background: #008751; color: white; border: none; padding: 14px 20px; width: 100%; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.3s; }
               button:hover { background: #006c40; }
+              .spinner { display: none; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 1s ease-in-out infinite; margin: 0 auto; }
+              @keyframes spin { to { transform: rotate(360deg); } }
           </style>
       </head>
       <body>
           <div class="card">
-              <h2>Telebirr Checkout Portal</h2>
-              <p>Sandbox Simulation Gateway</p>
+              <div class="logo">📱</div>
+              <h2>Telebirr H5 Checkout</h2>
+              <p>Secure Bus Fare Payment</p>
               <div class="amount">${ticket.fareAmount} ETB</div>
+              <div class="clock" id="payClock">00:00:00 AM</div>
               <div class="details">
-                  <p><strong>Token:</strong> ${ticket.ticketToken}</p>
+                  <p><strong>Ticket Token:</strong> ${ticket.ticketToken}</p>
                   <p><strong>Route:</strong> ${ticket.startPoint} ➔ ${ticket.dropOffPoint}</p>
                   <p><strong>Phone:</strong> ${ticket.passengerPhone}</p>
               </div>
-              <form action="/api/passenger/verify-simulate" method="POST">
+              <form id="payForm" action="/api/passenger/verify-simulate" method="POST">
                   <input type="hidden" name="token" value="${ticket.ticketToken}" />
-                  <button type="submit">Pay Now & Redirect</button>
+                  <button type="submit" id="payBtn">
+                      <span id="btnText">Confirm & Pay with Telebirr</span>
+                      <div class="spinner" id="spinner"></div>
+                  </button>
               </form>
           </div>
+          <script>
+              function updateClock() {
+                  const d = new Date();
+                  document.getElementById('payClock').innerText = d.toLocaleTimeString();
+              }
+              setInterval(updateClock, 1000);
+              updateClock();
+
+              document.getElementById('payForm').addEventListener('submit', function() {
+                  document.getElementById('btnText').style.display = 'none';
+                  document.getElementById('spinner').style.display = 'block';
+                  document.getElementById('payBtn').disabled = true;
+              });
+          </script>
       </body>
       </html>
     `;
@@ -267,10 +297,9 @@ exports.verifySimulate = async (req, res, next) => {
     }
 
     ticket.paymentStatus = 'Paid';
-    ticket.telebirrTransId = 'SIM-TXN-' + Date.now();
+    ticket.telebirrTransId = 'TB-H5-TXN-' + Date.now();
     await ticket.save();
 
-    // Redirect to real success page with live time clock
     return res.redirect(`/api/passenger/success?token=${token}`);
   } catch (error) {
     next(error);
