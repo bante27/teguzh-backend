@@ -2,6 +2,27 @@ const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const Conductor = require('../models/Conductor');
 
+exports.registerAdmin = async (req, res, next) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: 'Username and password are required' });
+    }
+
+    const existingAdmin = await Admin.findOne({ username });
+    if (existingAdmin) {
+      return res.status(400).json({ success: false, message: 'Admin username already exists' });
+    }
+
+    const admin = new Admin({ username, password, role: 'admin' });
+    await admin.save();
+
+    return res.status(201).json({ success: true, message: 'Admin registered successfully', admin: { username: admin.username } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.login = async (req, res, next) => {
   try {
     const { username, phone, password, role } = req.body;

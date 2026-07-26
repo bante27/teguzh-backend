@@ -38,6 +38,48 @@ exports.dashboard = async (req, res, next) => {
   }
 };
 
+exports.createBus = async (req, res, next) => {
+  try {
+    const { plateNumber, driverName, capacity } = req.body;
+    if (!plateNumber || !driverName || !capacity) {
+      return res.status(400).json({ success: false, message: 'Missing plateNumber, driverName, or capacity' });
+    }
+    const bus = new Bus({ plateNumber, driverName, capacity });
+    await bus.save();
+    return res.status(201).json({ success: true, message: 'Bus created successfully', bus });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createRoute = async (req, res, next) => {
+  try {
+    const { startPoint, dropOffPoint, baseTariff } = req.body;
+    if (!startPoint || !dropOffPoint || baseTariff === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing startPoint, dropOffPoint, or baseTariff' });
+    }
+    const route = new Route({ startPoint, dropOffPoint, baseTariff });
+    await route.save();
+    return res.status(201).json({ success: true, message: 'Route created successfully', route });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createConductor = async (req, res, next) => {
+  try {
+    const { name, phone, password, busId } = req.body;
+    if (!name || !phone || !password) {
+      return res.status(400).json({ success: false, message: 'Missing name, phone, or password' });
+    }
+    const conductor = new Conductor({ name, phone, password, busId });
+    await conductor.save();
+    return res.status(201).json({ success: true, message: 'Conductor created successfully', conductor });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.telebirrCallback = async (req, res, next) => {
   try {
     const { outTradeNo, tradeStatus, transactionId } = req.body;
