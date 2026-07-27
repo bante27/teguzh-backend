@@ -11,25 +11,22 @@
 
 ## 📱 UI & Payment Workflow Screenshots
 
-The system UI flow screenshots are stored in the [`assets/`](assets/.gitkeep:1) directory (`image.png`, `image1.png`, `image2.png`):
+The system UI flow screenshots stored in the [`assets/`](assets/.gitkeep:1) directory:
 
 ### 1. Telebirr H5 Checkout Screen
-```markdown
-![Telebirr H5 Checkout](assets/image.png)
-```
-![Telebirr H5 Checkout](assets/image.png)
+<p align="center">
+  <img src="assets/image.png" alt="Telebirr H5 Checkout" width="350"/>
+</p>
 
 ### 2. Payment Successful & Active Boarding Pass (View 1)
-```markdown
-![Payment Successful 1](assets/image1.png)
-```
-![Payment Successful 1](assets/image1.png)
+<p align="center">
+  <img src="assets/image1.png" alt="Payment Successful 1" width="350"/>
+</p>
 
 ### 3. Payment Successful & Active Boarding Pass (View 2)
-```markdown
-![Payment Successful 2](assets/image2.png)
-```
-![Payment Successful 2](assets/image2.png)
+<p align="center">
+  <img src="assets/image2.png" alt="Payment Successful 2" width="350"/>
+</p>
 
 ---
 
@@ -99,7 +96,7 @@ teguzh-backend/
 │   │   └── passengerRoutes.js    # Passenger service router
 │   └── services/
 │       ├── dynamicFare.js        # Distance-based tariff calculation logic
-│       └── qrGenerator.js        # Static vehicle QR code generation utility
+│       ├── qrGenerator.js        # Static vehicle QR code generation utility
 │       └── telebirrService.js    # RSA signing, AES encryption & Telebirr API client
 ├── .env                          # Environment variables configuration
 ├── package.json                  # Node.js dependencies and project metadata
