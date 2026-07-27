@@ -5,19 +5,13 @@
 [![MongoDB](https://img.shields.io/badge/mongodb-%5E9.7.3-green.svg)](https://www.mongodb.com/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
-**Teguzh** is a hardware-free, web-based digital ticketing and transit management backend designed for public bus transit systems (such as Anbessa and Sheger buses). It replaces traditional paper tickets and physical POS terminals with a seamless **Static QR Code + Telebirr H5 Integration** workflow.
+**Teguzh** is a hardware-free, web-based digital ticketing and transit management backend designed for public bus transit systems (such as Anbessa and Sheger buses). It replaces traditional paper tickets and physical POS terminals with a seamless **Static QR Code + Telebirr H5 Integration** workflow, enhanced with real-time GPS tracking.
 
 ---
 
 ## 📱 UI & Payment Workflow Screenshots
 
-> **⚠️ Important Notice for GitHub Display:**
-> If the images show an error on GitHub, it means the `assets/` folder has not been pushed to your GitHub repository yet. Run the following terminal commands [`git add assets/`](package.json:6) to upload them:
-> ```bash
-> git add assets/
-> git commit -m "Add UI screenshot assets"
-> git push origin main
-> ```
+The system UI flow screenshots stored in the [`assets/`](assets/.gitkeep:1) directory:
 
 ### 1. Telebirr H5 Checkout Screen
 <p align="center">
@@ -42,6 +36,7 @@
 * **Distance-Based Fare Calculation**: Dynamic fare estimation [`calculateFare()`](src/services/dynamicFare.js:1) based on the passenger's selected pick-up and drop-off stations.
 * **Telebirr H5 Payment Integration**: Direct checkout via Telebirr API [`initiatePayment()`](src/services/telebirrService.js:1) with secure RSA signatures and webhook verification [`handleWebhook()`](src/controllers/passengerController.js:1).
 * **Anti-Fraud Visual Ticket Verification**: Generates active boarding passes featuring live clock animations and hourly dynamic security colors [`generateQRCode()`](src/services/qrGenerator.js:1). Conductors verify tickets visually in seconds without physical scanners.
+* **Real-Time GPS Bus Tracking**: Conductors and drivers update vehicle GPS coordinates [`updateBusLocation()`](src/controllers/conductorController.js:46) while passengers and admins track bus locations [`getBusLocation()`](src/controllers/conductorController.js:80) in real time.
 * **Role-Based Access Control (RBAC)**: Comprehensive middleware [`verifyToken()`](src/middleware/roleCheck.js:1) and role checks for Passengers, Conductors, and Admins.
 
 ---
@@ -83,7 +78,7 @@ teguzh-backend/
 │   ├── controllers/
 │   │   ├── adminController.js     # Admin metrics & route tariff controls
 │   │   ├── authController.js      # User authentication & registration logic
-│   │   ├── conductorController.js # Ticket validation & audit endpoints
+│   │   ├── conductorController.js # Ticket validation, audit & GPS endpoints
 │   │   └── passengerController.js # Fare estimation, booking, and webhooks
 │   ├── middleware/
 │   │   ├── errorHandler.js       # Centralized Express error handler
@@ -91,14 +86,14 @@ teguzh-backend/
 │   │   └── security.js           # Helmet security headers & rate limiting
 │   ├── models/
 │   │   ├── Admin.js              # Admin schema definition
-│   │   ├── Bus.js                # Fleet vehicle metadata schema
+│   │   ├── Bus.js                # Fleet vehicle metadata & GPS schema
 │   │   ├── Conductor.js          # Conductor personnel profiles
 │   │   ├── Route.js              # Station paths & tariff rate schema
 │   │   └── Ticket.js             # Ticket transaction & status schema
 │   ├── routes/
 │   │   ├── adminRoutes.js        # Admin management router
 │   │   ├── authRoutes.js         # Authentication router
-│   │   ├── conductorRoutes.js    # Conductor verification router
+│   │   ├── conductorRoutes.js    # Conductor verification & GPS router
 │   │   └── passengerRoutes.js    # Passenger service router
 │   └── services/
 │       ├── dynamicFare.js        # Distance-based tariff calculation logic
@@ -161,7 +156,7 @@ The server will start running at `http://localhost:5000`.
 
 ---
 
-## 🔑 Key API Endpoints
+## 🔑 Key API Endpoints & Postman Testing
 
 | Method | Endpoint | Description | Access Control |
 | :--- | :--- | :--- | :--- |
@@ -169,7 +164,23 @@ The server will start running at `http://localhost:5000`.
 | `POST` | [`/api/passenger/book-ticket`](src/routes/passengerRoutes.js:1) | Initiates Telebirr H5 payment session | Public / Authenticated |
 | `POST` | [`/api/passenger/telebirr-webhook`](src/routes/passengerRoutes.js:1) | Handles asynchronous payment callback from Telebirr | System / Webhook |
 | `POST` | [`/api/conductor/verify-ticket`](src/routes/conductorRoutes.js:1) | Validates ticket status and records boardings | Conductor (`roleCheck.js`) |
+| `POST` | [`/api/conductor/location`](src/routes/conductorRoutes.js:7) | Updates bus real-time GPS coordinates | Conductor (`roleCheck.js`) |
+| `GET` | [`/api/conductor/location/:busId`](src/routes/conductorRoutes.js:8) | Retrieves live bus GPS location & timestamp | Public |
 | `POST` | [`/api/admin/routes`](src/routes/adminRoutes.js:1) | Manages base tariffs and station pricing | Admin (`roleCheck.js`) |
+
+### Postman Examples for GPS Tracking:
+* **Update GPS Location (`POST /api/conductor/location`)**:
+  - Headers: `Authorization: Bearer <token>`, `Content-Type: application/json`
+  - Body:
+    ```json
+    {
+      "busId": "651234567890abcdef123456",
+      "latitude": 9.0300,
+      "longitude": 38.7400
+    }
+    ```
+* **Get Bus GPS Location (`GET /api/conductor/location/:busId`)**:
+  - Headers: none required
 
 ---
 
