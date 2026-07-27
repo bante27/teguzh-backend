@@ -9,6 +9,30 @@
 
 ---
 
+## 📱 UI & Payment Workflow Screenshots
+
+The system UI flow screenshots are stored in the [`assets/`](assets/.gitkeep:1) directory (`image.png`, `image1.png`, `image2.png`):
+
+### 1. Telebirr H5 Checkout Screen
+```markdown
+![Telebirr H5 Checkout](assets/image.png)
+```
+![Telebirr H5 Checkout](assets/image.png)
+
+### 2. Payment Successful & Active Boarding Pass (View 1)
+```markdown
+![Payment Successful 1](assets/image1.png)
+```
+![Payment Successful 1](assets/image1.png)
+
+### 3. Payment Successful & Active Boarding Pass (View 2)
+```markdown
+![Payment Successful 2](assets/image2.png)
+```
+![Payment Successful 2](assets/image2.png)
+
+---
+
 ## 🌟 Key Features
 
 * **Zero-Hardware Ticketing**: Passengers scan a static QR code inside the bus using their smartphone browser to open the web app instantly—no mobile app installation required.
@@ -44,6 +68,11 @@
 
 ```text
 teguzh-backend/
+├── assets/
+│   ├── .gitkeep                  # Asset directory tracker
+│   ├── image.png                 # Telebirr H5 Checkout screenshot
+│   ├── image1.png                # Payment Successful screenshot 1
+│   └── image2.png                # Payment Successful screenshot 2
 ├── src/
 │   ├── config/
 │   │   ├── db.js                 # MongoDB connection configuration
@@ -70,7 +99,7 @@ teguzh-backend/
 │   │   └── passengerRoutes.js    # Passenger service router
 │   └── services/
 │       ├── dynamicFare.js        # Distance-based tariff calculation logic
-│       ├── qrGenerator.js        # Static vehicle QR code generation utility
+│       └── qrGenerator.js        # Static vehicle QR code generation utility
 │       └── telebirrService.js    # RSA signing, AES encryption & Telebirr API client
 ├── .env                          # Environment variables configuration
 ├── package.json                  # Node.js dependencies and project metadata
