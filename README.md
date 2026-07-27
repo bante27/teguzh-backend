@@ -11,7 +11,13 @@
 
 ## 📱 UI & Payment Workflow Screenshots
 
-The system UI flow screenshots stored in the [`assets/`](assets/.gitkeep:1) directory:
+> **⚠️ Important Notice for GitHub Display:**
+> If the images show an error on GitHub, it means the `assets/` folder has not been pushed to your GitHub repository yet. Run the following terminal commands [`git add assets/`](package.json:6) to upload them:
+> ```bash
+> git add assets/
+> git commit -m "Add UI screenshot assets"
+> git push origin main
+> ```
 
 ### 1. Telebirr H5 Checkout Screen
 <p align="center">
