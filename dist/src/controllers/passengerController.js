@@ -1,27 +1,66 @@
-const Ticket = require('../models/Ticket');
-const Bus = require('../models/Bus');
-const dynamicFare = require('../services/dynamicFare');
-const qrGenerator = require('../services/qrGenerator');
-const telebirrService = require('../services/telebirrService');
-const mongoose = require('mongoose');
-
-exports.estimateFare = async (req, res, next) => {
-  try {
-    const { startPoint, dropOffPoint } = req.body;
-    if (!startPoint || !dropOffPoint) {
-      return res.status(400).json({ success: false, message: 'startPoint and dropOffPoint are required' });
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
     }
-    const fareData = await dynamicFare.calculateFare(startPoint, dropOffPoint);
-    return res.status(200).json({ success: true, ...fareData });
-  } catch (error) {
-    next(error);
-  }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-
-exports.passengerBookPage = async (req, res, next) => {
-  try {
-    const busId = req.query.busId || '';
-    const html = `
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getActiveTicket = exports.telebirrWebhook = exports.verifySimulate = exports.simulatePaymentPage = exports.successPage = exports.bookTicket = exports.passengerBookPage = exports.estimateFare = void 0;
+const Ticket_1 = __importDefault(require("../models/Ticket"));
+const Bus_1 = __importDefault(require("../models/Bus"));
+const dynamicFare = __importStar(require("../services/dynamicFare"));
+const qrGenerator = __importStar(require("../services/qrGenerator"));
+const telebirrService = __importStar(require("../services/telebirrService"));
+const mongoose_1 = __importDefault(require("mongoose"));
+const estimateFare = async (req, res, next) => {
+    try {
+        const { startPoint, dropOffPoint } = req.body;
+        if (!startPoint || !dropOffPoint) {
+            return res.status(400).json({ success: false, message: 'startPoint and dropOffPoint are required' });
+        }
+        const fareData = await dynamicFare.calculateFare(startPoint, dropOffPoint);
+        return res.status(200).json({ success: true, ...fareData });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.estimateFare = estimateFare;
+const passengerBookPage = async (req, res, next) => {
+    try {
+        const busId = req.query.busId || '';
+        const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -93,69 +132,62 @@ exports.passengerBookPage = async (req, res, next) => {
       </body>
       </html>
     `;
-    res.send(html);
-  } catch (error) {
-    next(error);
-  }
+        res.send(html);
+    }
+    catch (error) {
+        next(error);
+    }
 };
-
-exports.bookTicket = async (req, res, next) => {
-  try {
-    const { startPoint, dropOffPoint, passengerPhone, busId } = req.body;
-
-    if (!startPoint || !dropOffPoint || !passengerPhone || !busId) {
-      return res.status(400).json({ success: false, message: 'Missing required booking fields' });
+exports.passengerBookPage = passengerBookPage;
+const bookTicket = async (req, res, next) => {
+    try {
+        const { startPoint, dropOffPoint, passengerPhone, busId } = req.body;
+        if (!startPoint || !dropOffPoint || !passengerPhone || !busId) {
+            return res.status(400).json({ success: false, message: 'Missing required booking fields' });
+        }
+        if (!mongoose_1.default.Types.ObjectId.isValid(busId)) {
+            return res.status(400).json({ success: false, message: 'Invalid busId format' });
+        }
+        const bus = await Bus_1.default.findById(busId);
+        if (!bus) {
+            return res.status(404).json({ success: false, message: 'Bus not found' });
+        }
+        const fareData = await dynamicFare.calculateFare(startPoint, dropOffPoint);
+        const ticketToken = `TGZ-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const ticket = new Ticket_1.default({
+            ticketToken,
+            busId,
+            startPoint,
+            dropOffPoint,
+            fareAmount: fareData.fareAmount,
+            paymentStatus: 'Pending',
+            passengerPhone,
+            isVerifiedByConductor: false
+        });
+        await ticket.save();
+        const orderResult = await telebirrService.createTelebirrOrder({
+            outTradeNo: ticketToken,
+            subject: `Bus Ticket: ${startPoint} to ${dropOffPoint}`,
+            totalAmount: fareData.fareAmount,
+            returnUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/api/passenger/success?token=${ticketToken}`
+        });
+        return res.status(200).json({
+            success: true,
+            ticketToken,
+            fare: fareData.fareAmount,
+            paymentUrl: orderResult.paymentUrl
+        });
     }
-
-    if (!mongoose.Types.ObjectId.isValid(busId)) {
-      return res.status(400).json({ success: false, message: 'Invalid busId format' });
+    catch (error) {
+        next(error);
     }
-
-    const bus = await Bus.findById(busId);
-    if (!bus) {
-      return res.status(404).json({ success: false, message: 'Bus not found' });
-    }
-
-    const fareData = await dynamicFare.calculateFare(startPoint, dropOffPoint);
-    const ticketToken = `TGZ-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-    const ticket = new Ticket({
-      ticketToken,
-      busId,
-      startPoint,
-      dropOffPoint,
-      fareAmount: fareData.fareAmount,
-      paymentStatus: 'Pending',
-      passengerPhone,
-      isVerifiedByConductor: false
-    });
-
-    await ticket.save();
-
-    const orderResult = await telebirrService.createTelebirrOrder({
-      outTradeNo: ticketToken,
-      subject: `Bus Ticket: ${startPoint} to ${dropOffPoint}`,
-      totalAmount: fareData.fareAmount,
-      returnUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/api/passenger/success?token=${ticketToken}`
-    });
-
-    return res.status(200).json({
-      success: true,
-      ticketToken,
-      fare: fareData.fareAmount,
-      paymentUrl: orderResult.paymentUrl
-    });
-  } catch (error) {
-    next(error);
-  }
 };
-
-exports.successPage = async (req, res, next) => {
-  try {
-    const { token } = req.query;
-    const ticket = await Ticket.findOne({ ticketToken: token });
-
-    const html = `
+exports.bookTicket = bookTicket;
+const successPage = async (req, res, next) => {
+    try {
+        const token = req.query.token;
+        const ticket = await Ticket_1.default.findOne({ ticketToken: token });
+        const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -201,25 +233,24 @@ exports.successPage = async (req, res, next) => {
       </body>
       </html>
     `;
-    res.send(html);
-  } catch (error) {
-    next(error);
-  }
+        res.send(html);
+    }
+    catch (error) {
+        next(error);
+    }
 };
-
-exports.simulatePaymentPage = async (req, res, next) => {
-  try {
-    const { token } = req.query;
-    if (!token) {
-      return res.status(400).send('<h3>Error: Missing Ticket Token</h3>');
-    }
-
-    const ticket = await Ticket.findOne({ ticketToken: token });
-    if (!ticket) {
-      return res.status(404).send('<h3>Error: Ticket not found</h3>');
-    }
-
-    const html = `
+exports.successPage = successPage;
+const simulatePaymentPage = async (req, res, next) => {
+    try {
+        const token = req.query.token;
+        if (!token) {
+            return res.status(400).send('<h3>Error: Missing Ticket Token</h3>');
+        }
+        const ticket = await Ticket_1.default.findOne({ ticketToken: token });
+        if (!ticket) {
+            return res.status(404).send('<h3>Error: Ticket not found</h3>');
+        }
+        const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -278,93 +309,87 @@ exports.simulatePaymentPage = async (req, res, next) => {
       </body>
       </html>
     `;
-    res.send(html);
-  } catch (error) {
-    next(error);
-  }
+        res.send(html);
+    }
+    catch (error) {
+        next(error);
+    }
 };
-
-exports.verifySimulate = async (req, res, next) => {
-  try {
-    const { token } = req.body;
-    if (!token) {
-      return res.status(400).json({ success: false, message: 'Missing token' });
+exports.simulatePaymentPage = simulatePaymentPage;
+const verifySimulate = async (req, res, next) => {
+    try {
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ success: false, message: 'Missing token' });
+        }
+        const ticket = await Ticket_1.default.findOne({ ticketToken: token });
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: 'Ticket not found' });
+        }
+        ticket.paymentStatus = 'Paid';
+        ticket.telebirrTransId = 'TB-H5-TXN-' + Date.now();
+        await ticket.save();
+        return res.redirect(`/api/passenger/success?token=${token}`);
     }
-
-    const ticket = await Ticket.findOne({ ticketToken: token });
-    if (!ticket) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    catch (error) {
+        next(error);
     }
-
-    ticket.paymentStatus = 'Paid';
-    ticket.telebirrTransId = 'TB-H5-TXN-' + Date.now();
-    await ticket.save();
-
-    return res.redirect(`/api/passenger/success?token=${token}`);
-  } catch (error) {
-    next(error);
-  }
 };
-
-exports.telebirrWebhook = async (req, res, next) => {
-  try {
-    const { outTradeNo, tradeStatus, transactionId } = req.body;
-
-    if (!outTradeNo) {
-      return res.status(400).json({ code: "-1", message: "Invalid webhook payload" });
+exports.verifySimulate = verifySimulate;
+const telebirrWebhook = async (req, res, next) => {
+    try {
+        const { outTradeNo, tradeStatus, transactionId } = req.body;
+        if (!outTradeNo) {
+            return res.status(400).json({ code: "-1", message: "Invalid webhook payload" });
+        }
+        const ticket = await Ticket_1.default.findOne({ ticketToken: outTradeNo });
+        if (!ticket) {
+            return res.status(404).json({ code: "-1", message: "Ticket not found" });
+        }
+        if (tradeStatus === 'TRADE_SUCCESS' || tradeStatus === 'Completed' || tradeStatus === 'SUCCESS') {
+            ticket.paymentStatus = 'Paid';
+            ticket.telebirrTransId = transactionId || 'TXN-' + Date.now();
+        }
+        else {
+            ticket.paymentStatus = 'Failed';
+        }
+        await ticket.save();
+        return res.status(200).json({ code: "0", message: "success" });
     }
-
-    const ticket = await Ticket.findOne({ ticketToken: outTradeNo });
-    if (!ticket) {
-      return res.status(404).json({ code: "-1", message: "Ticket not found" });
+    catch (error) {
+        console.error('Telebirr Webhook Error:', error);
+        return res.status(500).json({ code: "-1", message: error.message });
     }
-
-    if (tradeStatus === 'TRADE_SUCCESS' || tradeStatus === 'Completed' || tradeStatus === 'SUCCESS') {
-      ticket.paymentStatus = 'Paid';
-      ticket.telebirrTransId = transactionId || 'TXN-' + Date.now();
-    } else {
-      ticket.paymentStatus = 'Failed';
-    }
-
-    await ticket.save();
-
-    return res.status(200).json({ code: "0", message: "success" });
-  } catch (error) {
-    console.error('Telebirr Webhook Error:', error);
-    return res.status(500).json({ code: "-1", message: error.message });
-  }
 };
-
-exports.getActiveTicket = async (req, res, next) => {
-  try {
-    const { phone } = req.query;
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Passenger phone is required' });
+exports.telebirrWebhook = telebirrWebhook;
+const getActiveTicket = async (req, res, next) => {
+    try {
+        const phone = req.query.phone;
+        if (!phone) {
+            return res.status(400).json({ success: false, message: 'Passenger phone is required' });
+        }
+        const ticket = await Ticket_1.default.findOne({ passengerPhone: phone, paymentStatus: 'Paid', isVerifiedByConductor: false })
+            .sort({ createdAt: -1 })
+            .populate('busId');
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: 'No active paid tickets found' });
+        }
+        const qrCodeString = qrGenerator.generateQRToken(ticket.ticketToken);
+        return res.status(200).json({
+            success: true,
+            ticket: {
+                ticketToken: ticket.ticketToken,
+                startPoint: ticket.startPoint,
+                dropOffPoint: ticket.dropOffPoint,
+                fareAmount: ticket.fareAmount,
+                bus: ticket.busId,
+                qrCodeString,
+                createdAt: ticket.createdAt
+            }
+        });
     }
-
-    const ticket = await Ticket.findOne({ passengerPhone: phone, paymentStatus: 'Paid', isVerifiedByConductor: false })
-      .sort({ createdAt: -1 })
-      .populate('busId');
-
-    if (!ticket) {
-      return res.status(404).json({ success: false, message: 'No active paid tickets found' });
+    catch (error) {
+        next(error);
     }
-
-    const qrCodeString = qrGenerator.generateQRToken(ticket.ticketToken);
-
-    return res.status(200).json({
-      success: true,
-      ticket: {
-        ticketToken: ticket.ticketToken,
-        startPoint: ticket.startPoint,
-        dropOffPoint: ticket.dropOffPoint,
-        fareAmount: ticket.fareAmount,
-        bus: ticket.busId,
-        qrCodeString,
-        createdAt: ticket.createdAt
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
 };
+exports.getActiveTicket = getActiveTicket;

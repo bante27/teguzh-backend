@@ -1,21 +1,21 @@
- 
-const mongoose = require('mongoose');
-
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const mongoose_1 = __importDefault(require("mongoose"));
 const connectDB = async () => {
     try {
-        // Grab the URI string directly from your hidden environment variables
-        const conn = await mongoose.connect(process.env.MONGO_URI);
-        
+        const conn = await mongoose_1.default.connect(process.env.MONGO_URI);
         console.log(`=========================================`);
         console.log(`✨ MongoDB Connected Successfully!`);
         console.log(`📡 Host: ${conn.connection.host}`);
         console.log(`🗃️ Database Name: ${conn.connection.name}`);
         console.log(`=========================================`);
-    } catch (error) {
+    }
+    catch (error) {
         console.error(`❌ Database Connection Failure: ${error.message}`);
-        // Exit system process with failure code (1) to prevent unstable operations
         process.exit(1);
     }
 };
-
-module.exports = connectDB;
+exports.default = connectDB;
