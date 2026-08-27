@@ -1,0 +1,116 @@
+import { Request, Response, NextFunction } from 'express';
+import Admin from '../models/Admin';
+import Conductor from '../models/Conductor';
+import Bus from '../models/Bus';
+import Route from '../models/Route';
+import Ticket from '../models/Ticket';
+import mongoose from 'mongoose';
+
+export const dashboard = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+  try {
+    const totalTickets = await Ticket.countDocuments();
+    const paidTickets = await Ticket.countDocuments({ paymentStatus: 'Paid' });
+    const verifiedTickets = await Ticket.countDocuments({ isVerifiedByConductor: true });
+    const totalBuses = await Bus.countDocuments();
+    const totalConductors = await Conductor.countDocuments();
+    const totalRoutes = await Route.countDocuments();
+
+    const revenueResult = await Ticket.aggregate([
+      { $match: { paymentStatus: 'Paid' } },
+      { $group: { _id: null, totalRevenue: { $sum: '$fareAmount' } } }
+    ]);
+
+    const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+    return res.status(200).json({
+      success: true,
+      stats: {
+        totalTickets,
+        paidTickets,
+        verifiedTickets,
+        totalBuses,
+        totalConductors,
+        totalRoutes,
+        totalRevenue
+      },
+      message: 'Admin Dashboard Data Loaded Successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createBus = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+  try {
+    const { plateNumber, driverName, capacity } = req.body;
+    if (!plateNumber || !driverName || !capacity) {
+      return res.status(400).json({ success: false, message: 'Missing plateNumber, driverName, or capacity' });
+    }
+    const bus = new Bus({ plateNumber, driverName, capacity });
+    await bus.save();
+    return res.status(201).json({ success: true, message: 'Bus created successfully', bus });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createRoute = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+  try {
+    const { startPoint, dropOffPoint, baseTariff } = req.body;
+    if (!startPoint || !dropOffPoint || baseTariff === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing startPoint, dropOffPoint, or baseTariff' });
+    }
+    const route = new Route({ startPoint, dropOffPoint, baseTariff });
+    await route.save();
+    return res.status(201).json({ success: true, message: 'Route created successfully', route });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createConductor = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+  try {
+    const { name, phone, password, busId } = req.body;
+    if (!name || !phone || !password) {
+      return res.status(400).json({ success: false, message: 'Missing name, phone, or password' });
+    }
+
+    let validBusId: any = undefined;
+    if (busId && mongoose.Types.ObjectId.isValid(busId)) {
+      validBusId = busId;
+    }
+
+    const conductor = new Conductor({ name, phone, password, busId: validBusId });
+    await conductor.save();
+    return res.status(201).json({ success: true, message: 'Conductor created successfully', conductor });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const telebirrCallback = async (req: Request, res: Response, next: NextFunction): Promise<any> => {
+  try {
+    const { outTradeNo, tradeStatus, transactionId } = req.body;
+    
+    if (!outTradeNo) {
+      return res.status(400).json({ success: false, message: 'Invalid callback payload' });
+    }
+
+    const ticket = await Ticket.findOne({ ticketToken: outTradeNo });
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket not found for callback' });
+    }
+
+    if (tradeStatus === 'Completed' || tradeStatus === 'SUCCESS' || tradeStatus === 'Paid') {
+      ticket.paymentStatus = 'Paid';
+    } else {
+      ticket.paymentStatus = 'Failed';
+    }
+
+    await ticket.save();
+
+    return res.status(200).json({ success: true, message: 'Callback processed successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
