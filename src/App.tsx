@@ -2,26 +2,22 @@ import React, { useState, useEffect } from 'react';
 import {
     Bus, MapPin, Phone, CreditCard, CheckCircle2, ShieldCheck,
     Clock, ArrowRight, AlertCircle, Loader2, Navigation, QrCode,
-    Smartphone, Sparkles, Check, RefreshCw, Wifi, WifiOff
+    Smartphone, Sparkles, Check, RefreshCw
 } from 'lucide-react';
 
 export default function App() {
     const [currentScreen, setCurrentScreen] = useState<'book' | 'checkout' | 'success'>('book');
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'offline'>('connected');
 
-    const [apiBase, setApiBase] = useState<string>('http://localhost:5000');
+    const apiBase = 'http://localhost:5000';
+
     const [busId, setBusId] = useState<string>('BUS-ET-8821');
-    const [startPoint, setStartPoint] = useState<string>('Bole Medhanialem');
-    const [dropOffPoint, setDropOffPoint] = useState<string>('Piasa Square');
-    const [phoneNumber, setPhoneNumber] = useState<string>('0911223344');
+    const [startPoint, setStartPoint] = useState<string>('');
+    const [dropOffPoint, setDropOffPoint] = useState<string>('');
+    const [phoneNumber, setPhoneNumber] = useState<string>('');
 
-    const [fareData, setFareData] = useState<{ distanceKm: number; fareEtb: number; currency: string }>({
-        distanceKm: 8.5,
-        fareEtb: 25.00,
-        currency: 'ETB'
-    });
+    const [fareData, setFareData] = useState<{ distanceKm: number; fareEtb: number; currency: string } | null>(null);
 
     const [bookingData, setBookingData] = useState<{
         bookingId: string;
@@ -40,8 +36,6 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const bId = params.get('busId');
         if (bId) setBusId(bId);
-        const api = params.get('api');
-        if (api) setApiBase(api);
     }, []);
 
     useEffect(() => {
@@ -55,30 +49,31 @@ export default function App() {
 
     const handleEstimateFare = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
+        if (!startPoint || !dropOffPoint) {
+            setError('Please enter start point and drop-off point.');
+            return;
+        }
+
         setLoading(true);
         setError(null);
+
         try {
             const res = await fetch(`${apiBase}/api/passenger/estimate-fare`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ busId, startPoint, dropOffPoint })
             });
-            if (!res.ok) throw new Error('Backend estimation error');
+
+            if (!res.ok) throw new Error('Failed to estimate fare from backend.');
+
             const data = await res.json();
             setFareData({
-                distanceKm: data.distanceKm || 8.5,
-                fareEtb: data.fareEtb || 25.00,
+                distanceKm: data.distanceKm,
+                fareEtb: data.fareEtb,
                 currency: data.currency || 'ETB'
             });
-            setBackendStatus('connected');
-        } catch {
-            const mockDist = Math.max(3.0, (startPoint.length + dropOffPoint.length) * 0.6);
-            const mockFare = Math.round(mockDist * 3.2);
-            setFareData({
-                distanceKm: parseFloat(mockDist.toFixed(1)),
-                fareEtb: mockFare,
-                currency: 'ETB'
-            });
+        } catch (err: any) {
+            setError(err.message || 'Error communicating with backend API.');
         } finally {
             setLoading(false);
         }
@@ -86,73 +81,77 @@ export default function App() {
 
     const handleBook = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!phoneNumber || !startPoint || !dropOffPoint || !fareData) {
+            setError('Please complete all fields and estimate fare first.');
+            return;
+        }
+
         setLoading(true);
         setError(null);
+
         try {
             const res = await fetch(`${apiBase}/api/passenger/book`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ busId, startPoint, dropOffPoint, phoneNumber, fare: fareData.fareEtb })
+                body: JSON.stringify({
+                    busId,
+                    startPoint,
+                    dropOffPoint,
+                    phoneNumber,
+                    fare: fareData.fareEtb
+                })
             });
-            if (!res.ok) throw new Error('Booking gateway error');
+
+            if (!res.ok) throw new Error('Booking failed from backend.');
+
             const data = await res.json();
             setBookingData({
-                bookingId: data.bookingId || 'BK-' + Math.floor(100000 + Math.random() * 900000),
-                ticketToken: data.ticketToken || 'TKT-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
-                transactionId: data.transactionId || 'TXN-' + Math.floor(100000000 + Math.random() * 900000000),
+                bookingId: data.bookingId,
+                ticketToken: data.ticketToken,
+                transactionId: data.transactionId,
                 paymentUrl: data.paymentUrl || '#',
                 amount: data.amount || fareData.fareEtb,
                 merchantName: data.merchantName || 'Teguzh Transit PLC',
                 status: 'PENDING'
             });
-            setBackendStatus('connected');
             setCurrentScreen('checkout');
-        } catch {
-            setBookingData({
-                bookingId: 'BK-' + Math.floor(100000 + Math.random() * 900000),
-                ticketToken: 'TGZ-' + Math.floor(1000 + Math.random() * 9000),
-                transactionId: 'TXN-' + Math.floor(100000000 + Math.random() * 900000000),
-                paymentUrl: '#',
-                amount: fareData.fareEtb,
-                merchantName: 'Teguzh Cashless Bus System',
-                status: 'PENDING'
-            });
-            setBackendStatus('offline');
-            setCurrentScreen('checkout');
+        } catch (err: any) {
+            setError(err.message || 'Failed to initialize Telebirr payment.');
         } finally {
             setLoading(false);
         }
     };
 
     const handleVerifySimulate = async () => {
+        if (!bookingData) return;
         setLoading(true);
         setError(null);
+
         try {
             const res = await fetch(`${apiBase}/api/passenger/verify-simulate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    bookingId: bookingData?.bookingId,
-                    transactionId: bookingData?.transactionId,
+                    bookingId: bookingData.bookingId,
+                    transactionId: bookingData.transactionId,
                     phoneNumber
                 })
             });
-            if (!res.ok) throw new Error('Verification failed');
+
+            if (!res.ok) throw new Error('Payment verification failed.');
+
             const data = await res.json();
             setBookingData(prev => prev ? { ...prev, ...data, status: 'PAID' } : null);
-            setBackendStatus('connected');
             setCurrentScreen('success');
-        } catch {
-            setBookingData(prev => prev ? { ...prev, status: 'PAID' } : null);
-            setBackendStatus('offline');
-            setCurrentScreen('success');
+        } catch (err: any) {
+            setError(err.message || 'Failed to verify payment.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-emerald-500 selection:text-slate-950 font-sans">
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 font-sans">
             <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col min-h-[780px]">
 
                 {/* Header */}
@@ -168,20 +167,15 @@ export default function App() {
                             <p className="text-[11px] text-emerald-100 font-medium">Cashless Bus Ticketing</p>
                         </div>
                     </div>
-                    <div className={`flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-mono tracking-wider ${backendStatus === 'connected' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/50' : 'bg-amber-950/80 text-amber-300 border border-amber-700/50'
-                        }`}>
-                        {backendStatus === 'connected' ? <Wifi className="w-3 h-3 text-emerald-400" /> : <WifiOff className="w-3 h-3 text-amber-400" />}
-                        <span>{backendStatus === 'connected' ? 'API Online' : 'Demo Mode'}</span>
-                    </div>
                 </header>
 
-                {/* Body */}
+                {/* Main */}
                 <main className="flex-1 overflow-y-auto p-5 flex flex-col">
                     {error && (
-                        <div className="mb-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3.5 flex items-start space-x-3 text-rose-300 text-sm animate-shake">
+                        <div className="mb-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3.5 flex items-start space-x-3 text-rose-300 text-sm">
                             <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
                             <div>
-                                <p className="font-semibold text-xs">Error Notice</p>
+                                <p className="font-semibold text-xs">Error</p>
                                 <p className="text-xs text-rose-200">{error}</p>
                             </div>
                         </div>
@@ -189,22 +183,13 @@ export default function App() {
 
                     {/* SCREEN 1 */}
                     {currentScreen === 'book' && (
-                        <div className="flex-1 flex flex-col space-y-4 animate-fadeIn">
+                        <div className="flex-1 flex flex-col space-y-4">
                             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
                                 <div>
                                     <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                         <Navigation className="w-3.5 h-3.5 text-emerald-400" /> Active Bus ID
                                     </span>
                                     <span className="text-sm font-bold font-mono text-white">{busId}</span>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-[11px] text-slate-400 block">Backend Target</span>
-                                    <input
-                                        type="text"
-                                        value={apiBase}
-                                        onChange={(e) => setApiBase(e.target.value)}
-                                        className="bg-slate-900 text-[11px] text-emerald-400 font-mono px-2 py-0.5 rounded border border-slate-800 w-32 text-right focus:outline-none focus:border-emerald-500"
-                                    />
                                 </div>
                             </div>
 
@@ -217,6 +202,7 @@ export default function App() {
                                         type="text"
                                         value={startPoint}
                                         onChange={(e) => setStartPoint(e.target.value)}
+                                        placeholder="e.g., Bole"
                                         required
                                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
                                     />
@@ -230,6 +216,7 @@ export default function App() {
                                         type="text"
                                         value={dropOffPoint}
                                         onChange={(e) => setDropOffPoint(e.target.value)}
+                                        placeholder="e.g., Piasa"
                                         required
                                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
                                     />
@@ -243,6 +230,7 @@ export default function App() {
                                         type="tel"
                                         value={phoneNumber}
                                         onChange={(e) => setPhoneNumber(e.target.value)}
+                                        placeholder="0911223344"
                                         required
                                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 font-mono focus:outline-none focus:border-amber-500"
                                     />
@@ -253,21 +241,25 @@ export default function App() {
                                         <span className="text-xs text-slate-400">Calculated Trip Fare</span>
                                         <button
                                             type="button"
-                                            onClick={() => handleEstimateFare()}
+                                            onClick={handleEstimateFare}
                                             disabled={loading}
                                             className="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-900/50"
                                         >
-                                            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Estimate
+                                            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Estimate Fare
                                         </button>
                                     </div>
                                     <div className="flex items-baseline justify-between">
                                         <div>
-                                            <span className="text-2xl font-black text-white font-mono">{fareData.fareEtb.toFixed(2)}</span>
+                                            <span className="text-2xl font-black text-white font-mono">
+                                                {fareData ? fareData.fareEtb.toFixed(2) : '0.00'}
+                                            </span>
                                             <span className="text-xs text-emerald-400 font-semibold ml-1">ETB</span>
                                         </div>
                                         <div className="text-right">
                                             <span className="text-[11px] text-slate-400 block">Distance</span>
-                                            <span className="text-sm font-semibold text-slate-200 font-mono">{fareData.distanceKm} km</span>
+                                            <span className="text-sm font-semibold text-slate-200 font-mono">
+                                                {fareData ? `${fareData.distanceKm} km` : '-'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -275,8 +267,8 @@ export default function App() {
                                 <div className="pt-3 mt-auto">
                                     <button
                                         type="submit"
-                                        disabled={loading}
-                                        className="w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 font-bold py-3.5 px-6 rounded-2xl shadow-lg flex items-center justify-center space-x-2 active:scale-95 transition"
+                                        disabled={loading || !fareData}
+                                        className="w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 font-bold py-3.5 px-6 rounded-2xl shadow-lg flex items-center justify-center space-x-2 active:scale-95 transition disabled:opacity-50"
                                     >
                                         {loading ? <Loader2 className="w-5 h-5 animate-spin text-slate-950" /> : (
                                             <>
@@ -293,7 +285,7 @@ export default function App() {
 
                     {/* SCREEN 2 */}
                     {currentScreen === 'checkout' && bookingData && (
-                        <div className="flex-1 flex flex-col space-y-4 animate-fadeIn">
+                        <div className="flex-1 flex flex-col space-y-4">
                             <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-2xl p-5 text-center relative overflow-hidden">
                                 <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-2xl mx-auto flex items-center justify-center mb-3 border border-emerald-500/30">
                                     <CreditCard className="w-6 h-6" />
@@ -350,7 +342,7 @@ export default function App() {
 
                     {/* SCREEN 3 */}
                     {currentScreen === 'success' && bookingData && (
-                        <div className={`flex-1 flex flex-col space-y-4 animate-fadeIn transition-colors duration-1000 ${bgPulse ? 'bg-emerald-950/20' : 'bg-transparent'} rounded-3xl p-1`}>
+                        <div className={`flex-1 flex flex-col space-y-4 transition-colors duration-1000 ${bgPulse ? 'bg-emerald-950/20' : 'bg-transparent'} rounded-3xl p-1`}>
                             <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-4 text-white text-center shadow-lg flex items-center justify-between">
                                 <div className="flex items-center space-x-2">
                                     <div className="bg-white text-emerald-600 p-1.5 rounded-full shadow">
@@ -424,6 +416,10 @@ export default function App() {
                                     onClick={() => {
                                         setCurrentScreen('book');
                                         setBookingData(null);
+                                        setStartPoint('');
+                                        setDropOffPoint('');
+                                        setPhoneNumber('');
+                                        setFareData(null);
                                     }}
                                     className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-3 px-6 rounded-xl transition text-xs flex items-center justify-center space-x-1.5 border border-slate-700"
                                 >
