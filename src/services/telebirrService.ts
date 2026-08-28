@@ -87,7 +87,7 @@ export const createTelebirrOrder = async ({
     };
 
     const bizContent = encryptAES(businessData, process.env.TELEBIRR_APP_KEY);
-    
+
     const requestPayload: Record<string, any> = {
       appId: process.env.TELEBIRR_APP_ID,
       bizContent: bizContent,
@@ -120,10 +120,7 @@ export const createTelebirrOrder = async ({
 
     throw new Error(response.data?.msg || 'Telebirr checkout initiation failed');
   } catch (error: any) {
-    console.warn('⚠️ Telebirr live endpoint timeout/unreachable. Seamlessly switching to Telebirr H5 Animated Sandbox Checkout with Clock:', error.message);
-    return {
-      success: true,
-      paymentUrl: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/api/passenger/payment-simulate-page?token=${outTradeNo}`
-    };
+    console.error('❌ Telebirr API error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.msg || error.message || 'Telebirr payment initiation failed');
   }
 };
