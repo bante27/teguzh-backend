@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Bus, MapPin, Phone, CreditCard, CheckCircle2, ShieldCheck,
     Clock, ArrowRight, AlertCircle, Loader2, Navigation,
@@ -13,15 +13,11 @@ export default function App() {
     const apiBase = 'http://localhost:5000';
 
     const [busId, setBusId] = useState<string>('651234567890abcdef123456');
-    const [startPoint, setStartPoint] = useState<string>('Bole');
-    const [dropOffPoint, setDropOffPoint] = useState<string>('Piasa');
+    const [startPoint, setStartPoint] = useState<string>('');
+    const [dropOffPoint, setDropOffPoint] = useState<string>('');
     const [passengerPhone, setPassengerPhone] = useState<string>('+251911223344');
 
-    const [fareData, setFareData] = useState<{ distanceKm?: number; fareAmount?: number; currency?: string } | null>({
-        distanceKm: 8.5,
-        fareAmount: 15.00,
-        currency: 'ETB'
-    });
+    const [fareData, setFareData] = useState<{ distanceKm?: number; fareAmount?: number; currency?: string } | null>(null);
 
     const [bookingData, setBookingData] = useState<{
         ticketToken?: string;
@@ -43,13 +39,17 @@ export default function App() {
         return () => clearInterval(timer);
     }, []);
 
-    const handleEstimateFare = async (start: string, drop: string) => {
-        if (!start || !drop) return;
+    // Debounced live fare estimation calling exact backend endpoint
+    const fetchFare = useCallback(async (start: string, drop: string) => {
+        if (!start.trim() || !drop.trim()) {
+            setFareData(null);
+            return;
+        }
         try {
             const res = await fetch(`${apiBase}/api/passenger/estimate-fare`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ startPoint: start, dropOffPoint: drop })
+                body: JSON.stringify({ startPoint: start.trim(), dropOffPoint: drop.trim() })
             });
             if (!res.ok) return;
             const data = await res.json();
@@ -61,19 +61,18 @@ export default function App() {
                 });
             }
         } catch {
-            // silent fallback
+            // Non-blocking estimation failure
         }
-    };
+    }, [apiBase]);
 
-    const handleStartChange = (val: string) => {
-        setStartPoint(val);
-        handleEstimateFare(val, dropOffPoint);
-    };
-
-    const handleDropChange = (val: string) => {
-        setDropOffPoint(val);
-        handleEstimateFare(startPoint, val);
-    };
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (startPoint && dropOffPoint) {
+                fetchFare(startPoint, dropOffPoint);
+            }
+        }, 400);
+        return () => clearTimeout(handler);
+    }, [startPoint, dropOffPoint, fetchFare]);
 
     const handleBook = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -91,9 +90,9 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     busId,
-                    startPoint,
-                    dropOffPoint,
-                    passengerPhone
+                    startPoint: startPoint.trim(),
+                    dropOffPoint: dropOffPoint.trim(),
+                    passengerPhone: passengerPhone.trim()
                 })
             });
 
@@ -111,20 +110,14 @@ export default function App() {
                 throw new Error(data.message || 'Booking unsuccessful.');
             }
         } catch (err: any) {
-            // Clean sandbox fallback matching exact API contract
-            setBookingData({
-                ticketToken: 'TKT-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
-                fareAmount: fareData?.fareAmount || 15.00,
-                paymentUrl: '#'
-            });
-            setCurrentScreen('checkout');
+            setError(err.message || 'Unable to connect to Teguzh backend server.');
         } finally {
             setLoading(false);
         }
     };
 
     const handleVerifySimulate = async () => {
-        if (!bookingData) return;
+        if (!bookingData || !bookingData.ticketToken) return;
         setLoading(true);
         setError(null);
 
@@ -146,19 +139,22 @@ export default function App() {
             } else {
                 throw new Error('Verification response unsuccessful.');
             }
-        } catch {
-            setCurrentScreen('success');
+        } catch (err: any) {
+            setError(err.message || 'Payment verification failed.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-3 font-sans">
-            <div className="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl shadow-xl overflow-hidden flex flex-col">
+        <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-3 font-sans relative overflow-hidden">
+            {/* Subtle animated background hue for success screen / ambient effect */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-emerald-950/20 via-slate-900 to-cyan-950/20 animate-pulse pointer-events-none" />
+
+            <div className="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative z-10">
 
                 {/* Smart Compact Header */}
-                <header className="bg-emerald-600 px-4 py-3 flex items-center justify-between text-white">
+                <header className="bg-emerald-600 px-4 py-3 flex items-center justify-between text-white shadow-md">
                     <div className="flex items-center space-x-2">
                         <div className="bg-white/20 p-1.5 rounded-lg">
                             <Bus className="w-4 h-4 text-white" />
@@ -167,10 +163,10 @@ export default function App() {
                             <h1 className="font-bold text-sm tracking-wide flex items-center gap-1">
                                 Teguzh <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
                             </h1>
-                            <p className="text-[10px] text-emerald-100">Cashless Transit</p>
+                            <p className="text-[10px] text-emerald-100">Live Database Passenger Portal</p>
                         </div>
                     </div>
-                    <span className="text-[10px] bg-emerald-700 px-2 py-0.5 rounded font-mono">Live API</span>
+                    <span className="text-[10px] bg-emerald-700 px-2 py-0.5 rounded font-mono border border-emerald-500/30">API Connected</span>
                 </header>
 
                 {/* Main Content */}
@@ -195,35 +191,35 @@ export default function App() {
                             <form onSubmit={handleBook} className="space-y-3 flex flex-col">
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1">
-                                        <MapPin className="w-3 h-3 text-emerald-400" /> Start Point
+                                        <MapPin className="w-3 h-3 text-emerald-400" /> Start Point (Database)
                                     </label>
                                     <input
                                         type="text"
                                         value={startPoint}
-                                        onChange={(e) => handleStartChange(e.target.value)}
-                                        placeholder="e.g., Bole"
+                                        onChange={(e) => setStartPoint(e.target.value)}
+                                        placeholder="e.g. Bole"
                                         required
-                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 transition"
                                     />
                                 </div>
 
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1">
-                                        <MapPin className="w-3 h-3 text-cyan-400" /> Drop-Off Point
+                                        <MapPin className="w-3 h-3 text-cyan-400" /> Drop-Off Point (Database)
                                     </label>
                                     <input
                                         type="text"
                                         value={dropOffPoint}
-                                        onChange={(e) => handleDropChange(e.target.value)}
-                                        placeholder="e.g., Piasa"
+                                        onChange={(e) => setDropOffPoint(e.target.value)}
+                                        placeholder="e.g. Piasa"
                                         required
-                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500 transition"
                                     />
                                 </div>
 
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1">
-                                        <Phone className="w-3 h-3 text-amber-400" /> Phone Number
+                                        <Phone className="w-3 h-3 text-amber-400" /> Passenger Phone Number
                                     </label>
                                     <input
                                         type="tel"
@@ -231,32 +227,37 @@ export default function App() {
                                         onChange={(e) => setPassengerPhone(e.target.value)}
                                         placeholder="+251911223344"
                                         required
-                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-amber-500"
+                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-amber-500 transition"
                                     />
                                 </div>
 
                                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[11px] text-slate-400">Estimated Fare</span>
-                                        <span className="text-[10px] text-emerald-400 font-mono">Live API Calculation</span>
+                                        <span className="text-[11px] text-slate-400">Calculated Fare</span>
+                                        <span className="text-[10px] text-emerald-400 font-mono">
+                                            {fareData ? 'Live DB Estimate' : 'Enter stations above'}
+                                        </span>
                                     </div>
                                     <div className="flex items-baseline justify-between">
                                         <div>
                                             <span className="text-lg font-black text-white font-mono">
-                                                {fareData?.fareAmount !== undefined ? fareData.fareAmount.toFixed(2) : '15.00'}
+                                                {fareData?.fareAmount !== undefined ? fareData.fareAmount.toFixed(2) : '0.00'}
                                             </span>
                                             <span className="text-[10px] text-emerald-400 font-semibold ml-1">{fareData?.currency || 'ETB'}</span>
                                         </div>
                                         <span className="text-[11px] text-slate-400 font-mono">
-                                            {fareData?.distanceKm !== undefined ? `${fareData.distanceKm} km` : '8.5 km'}
+                                            {fareData?.distanceKm !== undefined ? `${fareData.distanceKm} km` : '-- km'}
                                         </span>
                                     </div>
                                 </div>
 
                                 <button
                                     type="submit"
-                                    disabled={loading}
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
+                                    disabled={loading || !fareData}
+                                    className={`w-full font-semibold py-2.5 px-4 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition ${fareData && !loading
+                                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                                            : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                        }`}
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : (
                                         <>
@@ -286,7 +287,7 @@ export default function App() {
                                 </div>
                                 <div className="flex justify-between py-0.5 border-b border-slate-800">
                                     <span className="text-slate-400 text-[11px]">Ticket Token</span>
-                                    <span className="font-mono text-emerald-400">{bookingData.ticketToken}</span>
+                                    <span className="font-mono text-emerald-400 truncate max-w-[160px]">{bookingData.ticketToken}</span>
                                 </div>
                                 <div className="flex justify-between py-0.5 border-b border-slate-800">
                                     <span className="text-slate-400 text-[11px]">Route</span>
@@ -294,7 +295,7 @@ export default function App() {
                                 </div>
                                 <div className="flex justify-between pt-0.5 text-xs font-bold">
                                     <span className="text-slate-300">Amount</span>
-                                    <span className="text-emerald-400 font-mono">{(bookingData.fareAmount || 15).toFixed(2)} ETB</span>
+                                    <span className="text-emerald-400 font-mono">{(bookingData.fareAmount || 0).toFixed(2)} ETB</span>
                                 </div>
                             </div>
 
@@ -302,18 +303,18 @@ export default function App() {
                                 <button
                                     onClick={handleVerifySimulate}
                                     disabled={loading}
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition"
+                                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow flex items-center justify-center space-x-1.5 transition cursor-pointer"
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : (
                                         <>
                                             <Check className="w-4 h-4" />
-                                            <span>Confirm & Pay {(bookingData.fareAmount || 15).toFixed(2)} ETB</span>
+                                            <span>Confirm & Pay {(bookingData.fareAmount || 0).toFixed(2)} ETB</span>
                                         </>
                                     )}
                                 </button>
                                 <button
                                     onClick={() => setCurrentScreen('book')}
-                                    className="w-full bg-slate-900 hover:bg-slate-800 text-slate-300 text-[11px] font-medium py-2 rounded-xl border border-slate-800 transition"
+                                    className="w-full bg-slate-900 hover:bg-slate-800 text-slate-300 text-[11px] font-medium py-2 rounded-xl border border-slate-800 transition cursor-pointer"
                                 >
                                     Cancel
                                 </button>
@@ -328,12 +329,14 @@ export default function App() {
                                 <div className="flex items-center space-x-2">
                                     <CheckCircle2 className="w-5 h-5 text-white" />
                                     <div>
-                                        <span className="px-2 py-0.5 bg-white text-emerald-800 font-black text-[10px] rounded-full uppercase tracking-wider">
+                                        <span className="px-2 py-0.5 bg-white text-emerald-800 font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm">
                                             [ PAID & VERIFIED ]
                                         </span>
                                     </div>
                                 </div>
-                                <span className="text-xs font-mono font-bold">{bookingData.ticketToken}</span>
+                                <span className="text-[11px] font-mono font-bold bg-emerald-700/60 px-2 py-0.5 rounded">
+                                    {bookingData.ticketToken?.substring(0, 10)}...
+                                </span>
                             </div>
 
                             <div className="bg-slate-900 border border-emerald-500/40 rounded-xl p-3 text-xs space-y-2">
@@ -341,8 +344,8 @@ export default function App() {
                                     <span className="text-emerald-400 font-medium flex items-center gap-1 text-[11px]">
                                         <ShieldCheck className="w-3.5 h-3.5" /> Security Pass
                                     </span>
-                                    <span className="text-slate-300 font-mono text-[11px] flex items-center gap-1">
-                                        <Clock className="w-3 h-3 text-cyan-400" /> {currentTime.toLocaleTimeString()}
+                                    <span className="text-slate-200 font-mono text-[11px] flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                                        <Clock className="w-3 h-3 text-cyan-400 animate-pulse" /> {currentTime.toLocaleTimeString()}
                                     </span>
                                 </div>
 
@@ -359,12 +362,12 @@ export default function App() {
 
                                 <div className="space-y-1 bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] font-mono">
                                     <div className="flex justify-between">
-                                        <span className="text-slate-400">Fare:</span>
-                                        <span className="text-emerald-400 font-bold">{(bookingData.fareAmount || 15).toFixed(2)} ETB</span>
+                                        <span className="text-slate-400">Fare Paid:</span>
+                                        <span className="text-emerald-400 font-bold">{(bookingData.fareAmount || 0).toFixed(2)} ETB</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-slate-400">Token:</span>
-                                        <span className="text-slate-200">{bookingData.ticketToken}</span>
+                                        <span className="text-slate-400">Token ID:</span>
+                                        <span className="text-slate-200 font-mono truncate max-w-[150px]">{bookingData.ticketToken}</span>
                                     </div>
                                 </div>
                             </div>
@@ -379,11 +382,12 @@ export default function App() {
                                 onClick={() => {
                                     setCurrentScreen('book');
                                     setBookingData(null);
-                                    setStartPoint('Bole');
-                                    setDropOffPoint('Piasa');
+                                    setStartPoint('');
+                                    setDropOffPoint('');
                                     setPassengerPhone('+251911223344');
+                                    setFareData(null);
                                 }}
-                                className="w-full bg-slate-900 hover:bg-slate-800 text-slate-200 font-medium py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1 border border-slate-800 transition"
+                                className="w-full bg-slate-900 hover:bg-slate-800 text-slate-200 font-medium py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-1 border border-slate-800 transition cursor-pointer"
                             >
                                 <RefreshCw className="w-3 h-3" />
                                 <span>Book Another Trip</span>
