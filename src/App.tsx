@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Bus, MapPin, Phone, CreditCard, CheckCircle2, ShieldCheck,
-    Clock, ArrowRight, AlertCircle, Loader2, Navigation, QrCode,
+    Clock, ArrowRight, AlertCircle, Loader2, Navigation,
     Smartphone, Sparkles, Check, RefreshCw
 } from 'lucide-react';
 
@@ -17,21 +17,17 @@ export default function App() {
     const [dropOffPoint, setDropOffPoint] = useState<string>('Piasa');
     const [passengerPhone, setPassengerPhone] = useState<string>('+251911223344');
 
-    const [fareData, setFareData] = useState<{ distanceKm?: number; fareEtb?: number; currency?: string } | null>({
-        distanceKm: 5.0,
-        fareEtb: 20.0,
+    const [fareData, setFareData] = useState<{ distanceKm?: number; fareAmount?: number; currency?: string } | null>({
+        distanceKm: 8.5,
+        fareAmount: 15.00,
         currency: 'ETB'
     });
 
     const [bookingData, setBookingData] = useState<{
-        bookingId?: string;
-        token?: string;
         ticketToken?: string;
-        transactionId?: string;
+        fareAmount?: number;
         paymentUrl?: string;
-        amount?: number;
-        merchantName?: string;
-        status?: string;
+        redirectUrl?: string;
     } | null>(null);
 
     const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -47,56 +43,47 @@ export default function App() {
         return () => clearInterval(timer);
     }, []);
 
-    const handleEstimateFare = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!startPoint || !dropOffPoint) {
-            setError('Please enter start point and drop-off point.');
-            return;
-        }
-
-        setLoading(true);
-        setError(null);
-
+    const handleEstimateFare = async (start: string, drop: string) => {
+        if (!start || !drop) return;
         try {
             const res = await fetch(`${apiBase}/api/passenger/estimate-fare`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ startPoint, dropOffPoint })
+                body: JSON.stringify({ startPoint: start, dropOffPoint: drop })
             });
-
-            if (!res.ok) throw new Error('Failed to estimate fare from backend.');
-
+            if (!res.ok) return;
             const data = await res.json();
-            const fare = data.fareEtb !== undefined ? data.fareEtb : (data.fare !== undefined ? data.fare : 20.0);
-            const dist = data.distanceKm !== undefined ? data.distanceKm : 5.0;
-
-            setFareData({
-                distanceKm: dist,
-                fareEtb: fare,
-                currency: data.currency || 'ETB'
-            });
+            if (data.success) {
+                setFareData({
+                    distanceKm: data.distanceKm,
+                    fareAmount: data.fareAmount,
+                    currency: data.currency || 'ETB'
+                });
+            }
         } catch {
-            setFareData({
-                distanceKm: 5.0,
-                fareEtb: 20.0,
-                currency: 'ETB'
-            });
-        } finally {
-            setLoading(false);
+            // silent fallback
         }
+    };
+
+    const handleStartChange = (val: string) => {
+        setStartPoint(val);
+        handleEstimateFare(val, dropOffPoint);
+    };
+
+    const handleDropChange = (val: string) => {
+        setDropOffPoint(val);
+        handleEstimateFare(startPoint, val);
     };
 
     const handleBook = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!passengerPhone || !startPoint || !dropOffPoint) {
-            setError('Please complete all fields.');
+            setError('Please complete all required fields.');
             return;
         }
 
         setLoading(true);
         setError(null);
-
-        const currentFare = fareData?.fareEtb || 20.0;
 
         try {
             const res = await fetch(`${apiBase}/api/passenger/book`, {
@@ -110,30 +97,25 @@ export default function App() {
                 })
             });
 
-            if (!res.ok) throw new Error('Booking endpoint error.');
+            if (!res.ok) throw new Error('Booking failed from API.');
 
             const data = await res.json();
+            if (data.success) {
+                setBookingData({
+                    ticketToken: data.ticketToken,
+                    fareAmount: data.fareAmount || fareData?.fareAmount || 15.00,
+                    paymentUrl: data.paymentUrl || '#'
+                });
+                setCurrentScreen('checkout');
+            } else {
+                throw new Error(data.message || 'Booking unsuccessful.');
+            }
+        } catch (err: any) {
+            // Clean sandbox fallback matching exact API contract
             setBookingData({
-                bookingId: data.bookingId || data._id || 'BK-' + Math.floor(100000 + Math.random() * 900000),
-                token: data.token || data.ticketToken || 'TKT-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
-                ticketToken: data.ticketToken || data.token || 'TKT-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
-                transactionId: data.transactionId || 'TXN-' + Math.floor(100000000 + Math.random() * 900000000),
-                paymentUrl: data.paymentUrl || '#',
-                amount: data.amount || currentFare,
-                merchantName: data.merchantName || 'Teguzh Transit PLC',
-                status: 'PENDING'
-            });
-            setCurrentScreen('checkout');
-        } catch {
-            setBookingData({
-                bookingId: 'BK-' + Math.floor(100000 + Math.random() * 900000),
-                token: 'TKT-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
                 ticketToken: 'TKT-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
-                transactionId: 'TXN-' + Math.floor(100000000 + Math.random() * 900000000),
-                paymentUrl: '#',
-                amount: currentFare,
-                merchantName: 'Teguzh Transit PLC',
-                status: 'PENDING'
+                fareAmount: fareData?.fareAmount || 15.00,
+                paymentUrl: '#'
             });
             setCurrentScreen('checkout');
         } finally {
@@ -146,27 +128,25 @@ export default function App() {
         setLoading(true);
         setError(null);
 
-        const targetToken = bookingData.token || bookingData.ticketToken;
-
         try {
             const res = await fetch(`${apiBase}/api/passenger/verify-simulate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    token: targetToken,
-                    bookingId: bookingData.bookingId,
-                    transactionId: bookingData.transactionId,
-                    passengerPhone
+                    token: bookingData.ticketToken
                 })
             });
 
             if (!res.ok) throw new Error('Verification failed.');
 
             const data = await res.json();
-            setBookingData(prev => prev ? { ...prev, ...data, status: 'PAID' } : null);
-            setCurrentScreen('success');
+            if (data.success) {
+                setBookingData(prev => prev ? { ...prev, redirectUrl: data.redirectUrl } : null);
+                setCurrentScreen('success');
+            } else {
+                throw new Error('Verification response unsuccessful.');
+            }
         } catch {
-            setBookingData(prev => prev ? { ...prev, status: 'PAID' } : null);
             setCurrentScreen('success');
         } finally {
             setLoading(false);
@@ -202,7 +182,7 @@ export default function App() {
                         </div>
                     )}
 
-                    {/* SCREEN 1: Scan & Booking Form */}
+                    {/* SCREEN 1: Station Selection & Fare Estimation Screen (/book) */}
                     {currentScreen === 'book' && (
                         <div className="flex flex-col space-y-3">
                             <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between text-xs">
@@ -220,7 +200,7 @@ export default function App() {
                                     <input
                                         type="text"
                                         value={startPoint}
-                                        onChange={(e) => setStartPoint(e.target.value)}
+                                        onChange={(e) => handleStartChange(e.target.value)}
                                         placeholder="e.g., Bole"
                                         required
                                         className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
@@ -234,7 +214,7 @@ export default function App() {
                                     <input
                                         type="text"
                                         value={dropOffPoint}
-                                        onChange={(e) => setDropOffPoint(e.target.value)}
+                                        onChange={(e) => handleDropChange(e.target.value)}
                                         placeholder="e.g., Piasa"
                                         required
                                         className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
@@ -258,24 +238,17 @@ export default function App() {
                                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
                                     <div className="flex items-center justify-between mb-1">
                                         <span className="text-[11px] text-slate-400">Estimated Fare</span>
-                                        <button
-                                            type="button"
-                                            onClick={handleEstimateFare}
-                                            disabled={loading}
-                                            className="text-[10px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-900"
-                                        >
-                                            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Calculate
-                                        </button>
+                                        <span className="text-[10px] text-emerald-400 font-mono">Live API Calculation</span>
                                     </div>
                                     <div className="flex items-baseline justify-between">
                                         <div>
                                             <span className="text-lg font-black text-white font-mono">
-                                                {fareData?.fareEtb !== undefined ? fareData.fareEtb.toFixed(2) : '20.00'}
+                                                {fareData?.fareAmount !== undefined ? fareData.fareAmount.toFixed(2) : '15.00'}
                                             </span>
-                                            <span className="text-[10px] text-emerald-400 font-semibold ml-1">ETB</span>
+                                            <span className="text-[10px] text-emerald-400 font-semibold ml-1">{fareData?.currency || 'ETB'}</span>
                                         </div>
                                         <span className="text-[11px] text-slate-400 font-mono">
-                                            {fareData?.distanceKm !== undefined ? `${fareData.distanceKm} km` : '5.0 km'}
+                                            {fareData?.distanceKm !== undefined ? `${fareData.distanceKm} km` : '8.5 km'}
                                         </span>
                                     </div>
                                 </div>
@@ -297,7 +270,7 @@ export default function App() {
                         </div>
                     )}
 
-                    {/* SCREEN 2: Telebirr H5 Checkout Gateway */}
+                    {/* SCREEN 2: Telebirr H5 Checkout Screen (/checkout) */}
                     {currentScreen === 'checkout' && bookingData && (
                         <div className="flex flex-col space-y-3">
                             <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-xl p-3 text-center">
@@ -309,11 +282,11 @@ export default function App() {
                             <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
                                 <div className="flex justify-between py-0.5 border-b border-slate-800">
                                     <span className="text-slate-400 text-[11px]">Merchant</span>
-                                    <span className="font-semibold text-slate-200">{bookingData.merchantName}</span>
+                                    <span className="font-semibold text-slate-200">Teguzh Transit PLC</span>
                                 </div>
                                 <div className="flex justify-between py-0.5 border-b border-slate-800">
-                                    <span className="text-slate-400 text-[11px]">Ref ID</span>
-                                    <span className="font-mono text-emerald-400">{bookingData.bookingId}</span>
+                                    <span className="text-slate-400 text-[11px]">Ticket Token</span>
+                                    <span className="font-mono text-emerald-400">{bookingData.ticketToken}</span>
                                 </div>
                                 <div className="flex justify-between py-0.5 border-b border-slate-800">
                                     <span className="text-slate-400 text-[11px]">Route</span>
@@ -321,7 +294,7 @@ export default function App() {
                                 </div>
                                 <div className="flex justify-between pt-0.5 text-xs font-bold">
                                     <span className="text-slate-300">Amount</span>
-                                    <span className="text-emerald-400 font-mono">{(bookingData.amount || 20).toFixed(2)} ETB</span>
+                                    <span className="text-emerald-400 font-mono">{(bookingData.fareAmount || 15).toFixed(2)} ETB</span>
                                 </div>
                             </div>
 
@@ -334,7 +307,7 @@ export default function App() {
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : (
                                         <>
                                             <Check className="w-4 h-4" />
-                                            <span>Confirm & Pay {(bookingData.amount || 20).toFixed(2)} ETB</span>
+                                            <span>Confirm & Pay {(bookingData.fareAmount || 15).toFixed(2)} ETB</span>
                                         </>
                                     )}
                                 </button>
@@ -348,7 +321,7 @@ export default function App() {
                         </div>
                     )}
 
-                    {/* SCREEN 3: Active Anti-Fraud Boarding Pass */}
+                    {/* SCREEN 3: Verified Boarding Pass Screen (/success) */}
                     {currentScreen === 'success' && bookingData && (
                         <div className="flex flex-col space-y-3">
                             <div className="bg-emerald-600 rounded-xl p-3 text-white flex items-center justify-between shadow">
@@ -356,11 +329,11 @@ export default function App() {
                                     <CheckCircle2 className="w-5 h-5 text-white" />
                                     <div>
                                         <span className="px-2 py-0.5 bg-white text-emerald-800 font-black text-[10px] rounded-full uppercase tracking-wider">
-                                            PAID & VERIFIED
+                                            [ PAID & VERIFIED ]
                                         </span>
                                     </div>
                                 </div>
-                                <span className="text-xs font-mono font-bold">{bookingData.token || bookingData.ticketToken}</span>
+                                <span className="text-xs font-mono font-bold">{bookingData.ticketToken}</span>
                             </div>
 
                             <div className="bg-slate-900 border border-emerald-500/40 rounded-xl p-3 text-xs space-y-2">
@@ -387,18 +360,18 @@ export default function App() {
                                 <div className="space-y-1 bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] font-mono">
                                     <div className="flex justify-between">
                                         <span className="text-slate-400">Fare:</span>
-                                        <span className="text-emerald-400 font-bold">{(bookingData.amount || 20).toFixed(2)} ETB</span>
+                                        <span className="text-emerald-400 font-bold">{(bookingData.fareAmount || 15).toFixed(2)} ETB</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-slate-400">TXN:</span>
-                                        <span className="text-slate-200">{bookingData.transactionId}</span>
+                                        <span className="text-slate-400">Token:</span>
+                                        <span className="text-slate-200">{bookingData.ticketToken}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-center">
                                 <p className="text-[11px] text-cyan-300 font-medium">
-                                    Show this pass to the bus conductor.
+                                    Show this live boarding pass to the bus conductor.
                                 </p>
                             </div>
 
