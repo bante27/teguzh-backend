@@ -1,67 +1,23 @@
 {
-<<<<<<< HEAD
   "name": "teguzh-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
+  "dependencies": {
+    "lucide-react": "^1.35.0",
+    "react": "^19.2.18",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.1.1"
+  },
   "devDependencies": {
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"
-  },
-  "dependencies": {
-    "lucide-react": "^1.35.0"
-=======
-  "name": "teguzh-backend",
-  "version": "1.0.0",
-  "description": "",
-  "type": "module",
-  "main": "dist/server.js",
-  "scripts": {
-    "build": "rimraf dist && tsc",
-    "start": "node dist/server.js",
-    "dev": "npx tsx watch server.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/bante27/teguzh-backend.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/bante27/teguzh-backend/issues"
-  },
-  "homepage": "https://github.com/bante27/teguzh-backend#readme",
-  "dependencies": {
-    "axios": "^1.18.1",
-    "cors": "^2.8.6",
-    "crypto": "^1.0.1",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "helmet": "^8.3.0",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.7.3"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^26.4.0",
-    "nodemon": "^3.1.14",
-    "rimraf": "^6.1.3",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
->>>>>>> 01a15f4dbff2a356a3851b25fef904ba9e72b15c
   }
 }
